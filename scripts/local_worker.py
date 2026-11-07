@@ -113,12 +113,17 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def request_json(config, route, payload=None):
-    base = config['base_url'].rstrip('/')
+def validate_base_url(base):
+    base = base.rstrip('/')
     url = urllib.parse.urlsplit(base)
     if (url.scheme != 'http' or url.hostname not in {'127.0.0.1', 'localhost', '::1'}
             or url.username or url.password or url.query or url.fragment):
         raise ValueError('僅允許本機 HTTP 端點；不會回退雲端。')
+    return base
+
+
+def request_json(config, route, payload=None):
+    base = validate_base_url(config['base_url'])
     data = None if payload is None else json.dumps(payload, ensure_ascii=False).encode('utf-8')
     req = urllib.request.Request(base + route, data=data, headers={'Content-Type': 'application/json'})
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
@@ -208,7 +213,7 @@ def emit(value, output, output_format='json', quiet=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('command', choices=['configure', 'paths', 'doctor', 'work', 'decision'])
+    parser.add_argument('command', choices=['setup', 'configure', 'paths', 'doctor', 'work', 'decision'])
     parser.add_argument('--config', type=Path, default=CONFIG)
     parser.add_argument('--task-file', type=Path)
     parser.add_argument('--output', type=Path)
@@ -237,6 +242,10 @@ def main():
                       'prompt': '請依原始需求與已有證據協助方案取捨；資料不足時列出缺項，不宣稱已執行工具。\n\n' + task,
                       'resume': '將 AI 決策加入下一個任務。'}, args.output, args.format)
                 return 3
+        if args.command == 'setup':
+            from environment_setup import wizard
+            wizard(args.config)
+            return 0
         raw_config = json.loads(args.config.read_text(encoding='utf-8-sig'))
         if args.command == 'configure':
             provider = args.provider

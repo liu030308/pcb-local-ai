@@ -1,0 +1,8 @@
+{
+  "min_track_width_mm": null,
+  "per_net_min_width_mm": {},
+  "allowed_track_layers": null,
+  "allowed_segment_headings_deg": null,
+  "max_vias": null,
+  "outline_size_mm": null
+}

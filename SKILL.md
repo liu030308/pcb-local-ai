@@ -9,13 +9,14 @@ description: Assist KiCad PCB tasks with optional local inference or handoff to 
 
 ## 開始使用
 
-Windows 使用者可雙擊 `start.bat`，選擇模式、角色，再輸入需求或提供 UTF-8 任務檔。也可執行 `python scripts/menu.py`。所有指令路徑以下均相對技能根目錄。
+Windows 使用者可雙擊 `start.bat`，首次互動啟動執行環境精靈，再選擇模式、角色與任務。精靈保留自動路徑，明確區分未偵測到與設定路徑不存在；不會自行安裝工具。也可執行 `python scripts/menu.py`。所有指令路徑以下均相對技能根目錄。
 
 - `local`：本機 OpenAI 相容文字服務。預設 `http://127.0.0.1:8686/v1`；失敗就回報，不自動切換模型或對話供應者。
 - `conversation`：其他 AI，無需本地模型。腳本只產生交接內容，不會呼叫雲端 API、登入對話或自動傳送任務。由目前協調者承接，或讓使用者將文字貼到選用的 AI。
 - 舊名稱 `gpt` 仍是 conversation 的相容別名；設定載入後會正規化為 conversation。
 
 ```powershell
+python scripts/local_worker.py setup
 python scripts/local_worker.py configure
 python scripts/local_worker.py paths
 python scripts/local_worker.py doctor
@@ -68,4 +69,18 @@ KiCad 明確設定優先，其次 PATH，再查 ProgramFiles/KiCad 與 LOCALAPPD
 
 ## 實作邊界
 
-腳本需要 Python 3.10 以上且無第三方依賴。已有文字角色、模式選擇、交接、純文字輸出與路徑偵測；未內建 KiCad 編輯、布局走線、ERC/DRC、搜尋下載、數值模擬或桌面操作。實際 EDA 工作仍需安裝 KiCad 與具備相應工具的協調者。本地文字介面不能直接處理圖片或 PDF 電路辨識。
+腳本需要 Python 3.10 以上且無第三方依賴。已有文字角色、模式選擇、交接、純文字輸出與路徑偵測；已加入獨立 KiCad CLI 檢查器；未內建 KiCad 編輯、布局走線、搜尋下載、數值模擬或桌面操作。實際 EDA 工作仍需安裝 KiCad 與具備相應工具的協調者。本地文字介面不能直接處理圖片或 PDF 電路辨識。
+
+## 執行工程檢查
+
+有實際專案檔時，可用 `python scripts/validate_project.py --project 電路.kicad_pro --rules-file validation-rules.json`。也可由選單啟動。檢查器不依賴模型服務，依 CLI 實際支援參數執行 ERC、DRC 與 schematic parity，不使用 save-board。專案與原理圖／PCB 需同目錄同名。
+
+每次建立新的 outputs/validation-* 證據目錄，保存工具原始報告、stdout／stderr、指令、版本、輸入檔與報告雜湊。ERC 讀取各 sheets 的違規，DRC 讀取 violations、unconnected_items 與 schematic_parity；缺報告、格式異常或工具失敗均不能通過。
+
+幾何門檻由該專案提供，範本在 examples/validation-rules.json。只自動檢查指定的線寬、直線方向、走線銅層、過孔數與單一矩形 gr_rect 板框尺寸；圓弧角度、其他板框、完整 courtyard／製造／銅層及功能理論仍須獨立處理。未填門檻不以預設數值代替。
+
+`checks_passed` 僅指本次受測範圍，`engineering_release_approved=false`；有違規／錯誤為 fail，缺項／未支援為 needs_review。不能據此跳過其他證據或擅自放行製造。詳見 README 的工程檢查說明。
+
+## 維護與發布
+
+本專案採 GPL-3.0-only。分享乾淨的 Release ZIP；build_release.py 使用 config.example.json，不打包現用設定、outputs 或快取。版本標籤須符合 VERSION；GitHub Actions 的跨平台測試與真正 KiCad 暫存測試通過後才發布。

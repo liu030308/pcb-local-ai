@@ -8,3 +8,4 @@ handoff.json
 result.json
 *.log
 outputs/
+dist/

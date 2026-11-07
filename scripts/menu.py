@@ -83,23 +83,48 @@ def main():
         print('需要 Python 3.10 或以上。')
         return 1
     print('PCB AI 助理 — 有本地模型／其他 AI 都可使用')
+    if sys.stdin.isatty() and not load_config(worker.CONFIG).get('setup_completed'):
+        from environment_setup import wizard
+        try:
+            wizard(worker.CONFIG)
+        except (EOFError, KeyboardInterrupt):
+            return 0
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            print(f'設定未完成：{exc}；可由主選單重新執行。')
     while True:
         try:
             choice = choose('主選單', {'1': '建立任務', '2': '切換預設 AI 模式',
-                                      '3': '查看自動路徑', '4': '檢查環境', '0': '離開'})
+                                      '3': '查看自動路徑', '4': '檢查環境',
+                                      '5': '環境設定精靈', '6': '執行 KiCad 工程檢查', '0': '離開'})
             if choice == '0':
                 return 0
             if choice == '1':
                 create_task(worker.CONFIG)
             elif choice == '2':
                 configure(worker.CONFIG)
+            elif choice == '5':
+                from environment_setup import wizard
+                wizard(worker.CONFIG)
+            elif choice == '6':
+                from validate_project import validate_project
+                project = Path(input('輸入或拖入 .kicad_pro 路徑：').strip().strip('"')).expanduser()
+                if not project.is_absolute():
+                    project = worker.CONFIG.parent / project
+                rule_text = input('專案幾何規則 JSON 路徑（Enter 不指定）：').strip().strip('"')
+                rules = Path(rule_text).expanduser() if rule_text else None
+                if rules and not rules.is_absolute():
+                    rules = worker.CONFIG.parent / rules
+                config = worker.resolve_config(load_config(worker.CONFIG), worker.CONFIG.parent)
+                report = validate_project(project, config, ROOT / 'outputs' / ('validation-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f')), rules)
+                print('檢查結果：' + report['status'] + '\n報告：' + report['report_path'])
             else:
                 config = worker.resolve_config(load_config(worker.CONFIG), worker.CONFIG.parent)
                 if choice == '3':
                     worker.emit(config, None)
                 else:
                     print('本地模式會連線設定中的本機服務；其他 AI 模式不需模型服務。')
-                    worker.emit(worker.doctor(config), None)
+                    from environment_setup import inspect_environment
+                    worker.emit(inspect_environment(config, probe_local=True), None)
         except (EOFError, KeyboardInterrupt):
             print('\n已離開。')
             return 0
