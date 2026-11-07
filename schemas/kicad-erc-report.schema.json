@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "KiCad ERC report supported shape",
+  "type": "object",
+  "required": [
+    "source",
+    "date",
+    "kicad_version",
+    "sheets"
+  ],
+  "properties": {
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "date": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kicad_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sheets": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "uuid_path",
+          "violations"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "uuid_path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "violations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/violation"
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "violation": {
+      "type": "object",
+      "required": [
+        "type",
+        "description",
+        "severity",
+        "items"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning"
+          ]
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "uuid",
+              "description",
+              "pos"
+            ],
+            "properties": {
+              "uuid": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": {
+                "type": "string"
+              },
+              "pos": {
+                "type": "object",
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "excluded": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

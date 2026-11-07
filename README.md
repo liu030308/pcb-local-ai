@@ -80,7 +80,7 @@ python scripts/local_worker.py work --provider local --role parts --task-file ex
 python -B -m unittest discover -s scripts -p "test_*.py" -v
 ```
 
-目前有 49 項本機測試，涵蓋路徑解析、模式選擇、離線交接及本地請求邊界。測試通過不代表電路已通過工程驗證。
+目前有 76 項本機測試，涵蓋路徑解析、模式選擇、離線交接及本地請求邊界。測試通過不代表電路已通過工程驗證。
 
 ## 舊版相容
 
@@ -112,7 +112,7 @@ python scripts/validate_project.py --project "你的專案/電路.kicad_pro" --r
 
 複製 [幾何規則範本](examples/validation-rules.json) 到自己的專案，填入經確認的條件：
 
-- `min_track_width_mm`：全域最小走線寬；`per_net_min_width_mm`：特定網路的最小走線寬。
+- `min_track_width_mm`：未另設網路門檻時的預設最小走線寬；`per_net_min_width_mm`：特定網路的最小走線寬。
 - `allowed_track_layers`：允許的走線銅層，例如 `["B.Cu"]`，不等於完整實體銅層檢查。
 - `allowed_segment_headings_deg`：允許直線方向，以 180° 為週期；不檢查焊盤外連續轉彎，遇圓弧列待確認。
 - `max_vias`：最大過孔數；`outline_size_mm`：`[寬, 高]`，本版只自動量測單一 `gr_rect` 板框。
@@ -131,8 +131,41 @@ GitHub Actions 會執行 Windows／Linux、Python 3.10／3.13 測試；另以 Ki
 python scripts/build_release.py
 ```
 
-發布包由 `config.example.json` 重建 config.json，不包含使用者現用的設定、outputs 或 Python 快取；相同來源可重現相同 ZIP。分享請優先使用 Release 的發布包。
+發布包只附 `config.example.json`，首次啟動建立個人 config.json；不包含現用設定、工作階段、遷移備份、outputs 或 Python 快取；相同來源可重現相同 ZIP。分享請優先使用 Release 的發布包。
 
 ## 授權
 
 本專案依 **GPL-3.0-only** 發布，完整條款見 [LICENSE](LICENSE)。Copyright (C) 2026 PCB Local AI contributors。GPL 授權適用於本專案程式與文件；KiCad 及各 AI 服務另有自己的授權與使用條款。
+
+## 0.4 設定與狀態遷移
+
+儲存庫與發布包不再追蹤／附帶 config.json。首次啟動由同目錄 config.example.json 初始化；若已存在個人設定，絕不以範本覆蓋。環境設定仍保留原有平面欄位，避免強迫使用者改寫舊設定。
+
+作用中專案、PCB、版本、專案名稱與 accepted_projects 改存於同目錄的 `.pcb_state.json`。首次讀取舊設定時會自動備份為 `.config.pre-state-migration.json`，再遷移動態欄位；已有狀態以既有狀態檔為準，舊值保留在備份中。設定及狀態寫入使用暫存檔與原子替換。自訂 `--config other.json` 使用獨立的 `.other_state.json`，避免共用同一工作階段。
+
+**從舊的 Git clone 更新前，先備份自己的 config.json。** 本次停止追蹤既有設定檔，Git 更新可能對舊的本機修改提出衝突；更新後將個人設定放回原位置，再啟動程式遷移。直接下載新 ZIP 的使用者，可將舊 config.json 複製進新資料夾；不要把範本覆寫到個人設定。
+
+## 本地推論串流與逾時
+
+預設保留非串流相容模式。環境精靈可設定串流，也可單次切換：
+
+```powershell
+python scripts/local_worker.py work --provider local --stream --task-file examples/task.txt --output result.json
+python scripts/local_worker.py work --provider local --no-stream --task-file examples/task.txt --output result.json
+```
+
+設定中的 `stream` 使用 true／false。串流預覽在 CLI 寫到 stderr，stdout 保持完整 JSON 或文字；選單顯示預覽後另存最終結果。只有收到 finish_reason=stop、[DONE] 且有文字才成功；錯誤、截斷、斷線、逾時或取消不產生新的成功結果檔，也不自動回退重試。不支援 SSE 的服務請明確使用 --no-stream。
+
+- `connect_timeout_seconds`：每次 HTTP 連線等待，預設 10 秒。
+- `read_timeout_seconds`：網路閒置讀取等待，預設 180 秒；舊設定未提供時沿用 timeout_seconds。
+- `total_timeout_seconds`：每次 HTTP 請求的總時間上限，預設 900 秒；即使持續收到心跳也不會無限等待。查模型列表與推論是不同請求。
+
+仍只連線本機 HTTP，不使用代理、不跟隨重新導向、不呼叫雲端 API。取消 CLI 輸出退出碼為 130。控制協定以 [Python HTTP client](https://docs.python.org/3/library/http.client.html) 與 [SSE 事件格式](https://html.spec.whatwg.org/multipage/server-sent-events.html) 為參考；本工具不是會自動重新連線的瀏覽器 EventSource。
+
+## 規則預檢與解析樣本
+
+schemas/validation-rules.schema.json 定義可執行幾何規則；schemas/kicad-erc-report.schema.json 與 kicad-drc-report.schema.json 檢查本工具消費的報告結構與欄位。內建驗證器僅實作這些 schema 所使用的關鍵字，不是完整的通用 JSON Schema 引擎，也不宣稱涵蓋上游所有可選欄位。
+
+自訂規則在任何 KiCad 命令啟動前先驗證；型別錯誤、未知欄位與非有限數值都攔下。報告檢查必要來源／版本、頁面、違規種類、嚴重性與受影響物件；缺漏不當作零錯誤。工程提示詞規範與可執行數值規則仍分開維護，不能以提示詞取代實際證據。
+
+examples/fixtures 包含 PCB 解析樣本與故意錯誤的雙頁原理圖。board_audit 只解析 PCB；階層式原理圖及子頁未接腳位由真正 KiCad ERC 的整合測試處理。複雜 Edge.Cuts 仍列待確認，並未因新增樣本就宣稱支援所有板框。

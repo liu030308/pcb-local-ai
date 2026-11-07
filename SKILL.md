@@ -25,7 +25,7 @@ python scripts/local_worker.py work --provider local --role general --task-file 
 python scripts/local_worker.py decision --task-file examples/task.txt --format text --output decision.txt
 ```
 
-`configure` 儲存預設模式，`--provider` 只覆寫單次命令。`paths` 離線顯示解析後設定，不建立資料夾、不改寫設定。`doctor` 在 local 模式查模型服務及工具路徑，在 conversation 模式不查本地模型；均不代表已測試推論或 EDA。
+`configure` 儲存預設模式，`--provider` 只覆寫單次命令。`paths` 離線顯示解析後設定，不建立資料目錄；首次可能初始化或遷移設定。`doctor` 在 local 模式查模型服務及工具路徑，在 conversation 模式不查本地模型；均不代表已測試推論或 EDA。
 
 `work` 預設輸出 JSON；`--format text` 輸出可直接複製的完整提示詞（conversation）或模型草稿（local）。選單同時儲存文字與 JSON 到技能根目錄的 outputs，以時間命名，不自動覆蓋舊任務。
 
@@ -83,4 +83,12 @@ KiCad 明確設定優先，其次 PATH，再查 ProgramFiles/KiCad 與 LOCALAPPD
 
 ## 維護與發布
 
-本專案採 GPL-3.0-only。分享乾淨的 Release ZIP；build_release.py 使用 config.example.json，不打包現用設定、outputs 或快取。版本標籤須符合 VERSION；GitHub Actions 的跨平台測試與真正 KiCad 暫存測試通過後才發布。
+本專案採 GPL-3.0-only。分享乾淨的 Release ZIP；build_release.py 只附 config.example.json，不打包現用設定、工作階段、outputs 或快取。版本標籤須符合 VERSION；GitHub Actions 的跨平台測試與真正 KiCad 暫存測試通過後才發布。
+
+## 個人設定與狀態（0.4+）
+
+首次載入會由 config.example.json 建立 config.json；兩者不可反向覆蓋。config.json、.pcb_state.json、遷移備份都不納入版控或發布包。舊平面設定會先備份，再把 active_*、accepted_projects、accepted_revision、project_display_name 移到狀態檔。已有狀態優先，保留舊值於備份；靜態設定不能被狀態覆蓋。
+
+只有需要設定時讀取環境設定，對話交接仍不呼叫模型服務。local 模式可選 --stream／--no-stream；預覽不是成功證據，需正常 stop 與 [DONE] 後才交付結果。連線、閒置讀取與單次請求總逾時各自控制；不因心跳無限延長，也不在失敗後自動重送或切換供應者。
+
+規則先依 schemas/validation-rules.schema.json 預檢，失敗不啟動 KiCad。ERC／DRC 報告以 schemas 中的支援結構驗證，缺欄位、未知嚴重性或錯誤物件結構不能當作零錯誤。board_audit 的測試只涵蓋 PCB；階層原理圖由真正 KiCad 整合測試驗證。詳見 README 的遷移與串流說明。

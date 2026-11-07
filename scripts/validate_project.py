@@ -11,6 +11,8 @@ from pathlib import Path
 
 import board_audit
 import local_worker as worker
+import config_store
+import schema_checks
 
 
 def digest(path):
@@ -30,17 +32,8 @@ def run_command(command, timeout=180):
 
 def report_count(path, kind):
     report = json.loads(path.read_text(encoding='utf-8-sig'))
-    if not isinstance(report, dict) or not isinstance(report.get('kicad_version'), str):
-        raise ValueError('報告缺少 KiCad 版本或不是物件。')
-    if kind == 'erc':
-        sheets = report.get('sheets')
-        if not isinstance(sheets, list) or not sheets:
-            raise ValueError('ERC 報告缺少 sheets。')
-        groups = [sheet.get('violations') if isinstance(sheet, dict) else None for sheet in sheets]
-    else:
-        groups = [report.get(key) for key in ('violations', 'unconnected_items', 'schematic_parity')]
-    if any(not isinstance(group, list) or any(not isinstance(v, dict) or 'severity' not in v for v in group) for group in groups):
-        raise ValueError('報告違規欄位缺漏或格式錯誤，不能當作零錯誤。')
+    schema_checks.validate_report(report, kind)
+    groups = [sheet['violations'] for sheet in report['sheets']] if kind == 'erc' else [report[key] for key in ('violations','unconnected_items','schematic_parity')]
     return sum(len(group) for group in groups)
 
 
@@ -56,13 +49,23 @@ def validate_project(project, config, output_dir, rules_file=None):
     inputs += [p for p in [board, project.with_suffix('.kicad_dru')] if p.is_file()]
     before = {str(p): digest(p) for p in inputs}
     checks = {}
+    rules, rule_error, rule_path = None, None, None
+    if rules_file:
+        rule_path = Path(rules_file).resolve()
+        try:
+            rules = schema_checks.validate_rules(json.loads(rule_path.read_text(encoding='utf-8-sig')))
+        except (OSError, ValueError, TypeError) as exc:
+            rule_error = str(exc)
     cli = config.get('kicad_cli')
     cli_exists = bool(cli and Path(cli).is_file())
-    version = run_command([cli, 'version'], 10) if cli_exists else {'returncode': None, 'stderr': '未偵測到可用的 KiCad CLI。'}
+    version = run_command([cli, 'version'], 10) if cli_exists and not rule_error else {'returncode': None, 'stderr': '規則預檢失敗，未啟動工具。' if rule_error else '未偵測到可用的 KiCad CLI。'}
     help_cache = {}
     for name, kind, source, extra in [('erc', 'sch', schematic, []),
                                        ('drc', 'pcb', board, []),
                                        ('schematic_parity', 'pcb', board, ['--schematic-parity'])]:
+        if rule_error:
+            checks[name] = {'status': 'not_run', 'reason': '幾何規則預檢失敗，未啟動 KiCad。'}
+            continue
         if not source.is_file() or (extra and not schematic.is_file()):
             checks[name] = {'status': 'not_run', 'reason': '缺少對應的同名原理圖或 PCB。'}
             continue
@@ -98,10 +101,10 @@ def validate_project(project, config, output_dir, rules_file=None):
         else:
             result['reason'] = '工具未產生本次 JSON 報告。'
         checks[name] = result
-    if rules_file and board.is_file():
-        rule_path = Path(rules_file).resolve()
+    if rule_error:
+        checks['geometry'] = {'status': 'error', 'reason': rule_error}
+    elif rules_file and board.is_file():
         try:
-            rules = json.loads(rule_path.read_text(encoding='utf-8-sig'))
             checks['geometry'] = board_audit.audit(board, rules)
             checks['geometry'].update(rules_path=str(rule_path), rules_sha256=digest(rule_path))
         except (OSError, ValueError, TypeError, IndexError) as exc:
@@ -135,7 +138,7 @@ def main():
     parser.add_argument('--rules-file', type=Path)
     args = parser.parse_args()
     try:
-        config = worker.resolve_config(json.loads(args.config.read_text(encoding='utf-8-sig')), args.config.resolve().parent)
+        config = worker.resolve_config(config_store.load_runtime(args.config), args.config.resolve().parent)
         output = args.output_dir or worker.CONFIG.parent / 'outputs' / ('validation-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f'))
         result = validate_project(args.project, config, output, args.rules_file)
         print(json.dumps(result, ensure_ascii=False, indent=2))

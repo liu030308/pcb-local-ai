@@ -24,7 +24,8 @@ class BuildTests(unittest.TestCase):
             (root/'scripts/__pycache__/cache.pyc').write_bytes(b'cache')
             archive=build_release.build(root,Path(temporary)/'dist')
             with ZipFile(archive) as zipped:
-                config=json.loads(zipped.read('pcb-local-ai/config.json'))
+                self.assertNotIn('pcb-local-ai/config.json',zipped.namelist())
+                config=json.loads(zipped.read('pcb-local-ai/config.example.json'))
                 self.assertIsNone(config['project_root'])
                 self.assertNotIn('private',config)
                 self.assertFalse(any('outputs' in n or '__pycache__' in n for n in zipped.namelist()))

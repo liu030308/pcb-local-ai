@@ -30,7 +30,15 @@ def main():
         print(json.dumps(invalid,ensure_ascii=False,indent=2))
         assert invalid['checks']['drc']['status']=='fail', 'Real DRC must reject the invalid fixture'
         assert invalid['status']=='fail'
-        print('Real KiCad integration checks passed (empty/invalid fixtures; no functional circuit certification).')
+        hierarchy=root/'hierarchy'
+        shutil.copytree(Path(__file__).resolve().parents[1]/'examples/fixtures/hierarchy',hierarchy)
+        hierarchical=validate_project.validate_project(hierarchy/'hierarchy.kicad_pro',{'kicad_cli':cli},root/'hierarchy-evidence')
+        print(json.dumps(hierarchical,ensure_ascii=False,indent=2))
+        assert hierarchical['checks']['erc']['status']=='fail', 'Unconnected child pins must fail ERC'
+        raw=json.loads((root/'hierarchy-evidence/erc.json').read_text(encoding='utf-8'))
+        assert len(raw['sheets'])>=2, 'ERC must inspect the child sheet'
+        assert any(v['type']=='pin_not_connected' for sheet in raw['sheets'] for v in sheet['violations']), 'Unconnected pins must be reported from the real schematic'
+        print('Real KiCad integration checks passed (empty, invalid and hierarchical fixtures; no functional circuit certification).')
 
 
 if __name__=='__main__':

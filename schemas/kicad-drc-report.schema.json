@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "KiCad DRC report supported shape",
+  "type": "object",
+  "required": [
+    "source",
+    "date",
+    "kicad_version",
+    "violations",
+    "unconnected_items",
+    "schematic_parity"
+  ],
+  "properties": {
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "date": {
+      "type": "string",
+      "minLength": 1
+    },
+    "kicad_version": {
+      "type": "string",
+      "minLength": 1
+    },
+    "violations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/violation"
+      }
+    },
+    "unconnected_items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/violation"
+      }
+    },
+    "schematic_parity": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/violation"
+      }
+    }
+  },
+  "$defs": {
+    "violation": {
+      "type": "object",
+      "required": [
+        "type",
+        "description",
+        "severity",
+        "items"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "error",
+            "warning"
+          ]
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "uuid",
+              "description",
+              "pos"
+            ],
+            "properties": {
+              "uuid": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": {
+                "type": "string"
+              },
+              "pos": {
+                "type": "object",
+                "required": [
+                  "x",
+                  "y"
+                ],
+                "properties": {
+                  "x": {
+                    "type": "number"
+                  },
+                  "y": {
+                    "type": "number"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "excluded": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

@@ -36,8 +36,8 @@ class ValidationTests(unittest.TestCase):
             result['stdout'] = '--format --output --exit-code-violations --severity-error --severity-warning --schematic-parity'
         else:
             path = Path(command[command.index('--output') + 1])
-            report = {'kicad_version': '10.0.0'}
-            report.update({'sheets': [{'violations': []}]} if 'erc' in command else
+            report = {'kicad_version': '10.0.0', 'source':command[-1], 'date':'2026-11-07T00:00:00Z'}
+            report.update({'sheets': [{'path':'/', 'uuid_path':'/test', 'violations': []}]} if 'erc' in command else
                           {'violations': [], 'unconnected_items': [], 'schematic_parity': []})
             path.write_text(json.dumps(report))
         return result
@@ -83,7 +83,7 @@ class ValidationTests(unittest.TestCase):
             if 'drc' in command and '--output' in command:
                 path = Path(command[command.index('--output')+1])
                 report = json.loads(path.read_text())
-                report['unconnected_items'] = [{'severity': 'error'}]
+                report['unconnected_items'] = [{'type':'unconnected_items','description':'test','severity':'error','items':[]}]
                 path.write_text(json.dumps(report))
             return result
         self.assertEqual(self.run_validation(unconnected)['status'], 'fail')
@@ -105,8 +105,8 @@ class ValidationTests(unittest.TestCase):
 
     def test_nested_erc_violations_are_counted(self):
         path = self.root/'erc.json'
-        path.write_text(json.dumps({'kicad_version':'10.0', 'sheets':[
-            {'violations': []}, {'violations': [{'severity':'warning'}]}]}))
+        path.write_text(json.dumps({'kicad_version':'10.0', 'source':'test.kicad_sch','date':'2026-11-07','sheets':[
+            {'path':'/','uuid_path':'/a','violations': []}, {'path':'/child','uuid_path':'/a/b','violations': [{'type':'pin_not_connected','description':'test','severity':'warning','items':[]}]}]}))
         self.assertEqual(validation.report_count(path, 'erc'), 1)
 
     def test_missing_cli_and_rules_are_review_not_success(self):
@@ -131,6 +131,24 @@ class ValidationTests(unittest.TestCase):
         (evidence/'erc.json').write_text('{}')
         with self.assertRaises(FileExistsError):
             self.run_validation()
+
+    def test_invalid_rules_stop_before_any_tool_execution(self):
+        self.rules.write_text('{"per_net_min_width_mm":false}')
+        with patch.object(validation,'run_command') as command:
+            result=validation.validate_project(self.project,self.config,self.root/'evidence',self.rules)
+            command.assert_not_called()
+        self.assertEqual(result['status'],'fail')
+        self.assertEqual(result['checks']['erc']['status'],'not_run')
+
+    def test_report_items_and_severities_are_validated(self):
+        path=self.root/'bad-report.json'
+        base={'kicad_version':'10.0','source':'board.kicad_pcb','date':'2026-11-07',
+              'violations':[],'unconnected_items':[],'schematic_parity':[]}
+        for bad in [{'type':'test','description':'test','severity':None,'items':[]},
+                    {'type':'test','description':'test','severity':'error','items':[{'uuid':'x'}]}]:
+            with self.subTest(bad=bad),self.assertRaises(ValueError):
+                path.write_text(json.dumps(dict(base,violations=[bad])))
+                validation.report_count(path,'drc')
 
     def test_invalid_geometry_rules_fail(self):
         self.rules.write_text('{"min_track_width_mm":-1}')

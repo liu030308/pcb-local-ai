@@ -1,0 +1,16 @@
+(kicad_sch (version 20231120) (generator eeschema)
+ (uuid cccccccc-cccc-4ccc-8ccc-cccccccccccc) (paper "A4")
+ (lib_symbols
+  (symbol "Test:TwoPin" (pin_names (offset 1.016)) (in_bom yes) (on_board yes)
+   (property "Reference" "J" (at 0 2.54 0) (effects (font (size 1.27 1.27))))
+   (property "Value" "TwoPin" (at 0 -2.54 0) (effects (font (size 1.27 1.27))))
+   (symbol "TwoPin_1_1"
+    (pin passive line (at -5.08 0 0) (length 2.54) (name "A" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
+    (pin passive line (at 5.08 0 180) (length 2.54) (name "B" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27))))))))
+ (symbol (lib_id "Test:TwoPin") (at 100 100 0) (unit 1) (in_bom yes) (on_board yes) (dnp no)
+  (uuid dddddddd-dddd-4ddd-8ddd-dddddddddddd)
+  (property "Reference" "J1" (at 100 96 0) (effects (font (size 1.27 1.27))))
+  (property "Value" "TwoPin" (at 100 104 0) (effects (font (size 1.27 1.27))))
+  (pin "1" (uuid eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee))
+  (pin "2" (uuid ffffffff-ffff-4fff-8fff-ffffffffffff))
+  (instances (project "hierarchy" (path "/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" (reference "J1") (unit 1))))))

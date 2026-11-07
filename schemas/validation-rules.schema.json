@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Project geometry constraints",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "min_track_width_mm": {
+      "type": [
+        "number",
+        "null"
+      ],
+      "exclusiveMinimum": 0
+    },
+    "per_net_min_width_mm": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": {
+        "type": "number",
+        "exclusiveMinimum": 0
+      }
+    },
+    "allowed_track_layers": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "allowed_segment_headings_deg": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "minItems": 1,
+      "items": {
+        "type": "number"
+      }
+    },
+    "max_vias": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "outline_size_mm": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "number",
+        "exclusiveMinimum": 0
+      }
+    }
+  }
+}

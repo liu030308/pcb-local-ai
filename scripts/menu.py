@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 import local_worker as worker
+import config_store
 
 ROOT = Path(__file__).resolve().parents[1]
 ROLE_OPTIONS = [('general', '通用助理'), ('parts', '零件助理'),
@@ -26,7 +27,7 @@ def choose(title, options, default=None):
 
 
 def load_config(config_path):
-    return json.loads(config_path.read_text(encoding='utf-8-sig'))
+    return config_store.load_config(config_path)
 
 
 def configure(config_path):
@@ -35,13 +36,13 @@ def configure(config_path):
     choice = choose('選擇 AI 模式', {'1': '有本地模型', '2': '其他 AI（無本地模型）'},
                     '1' if current == 'local' else '2')
     raw['routine_work_provider'] = {'1': 'local', '2': 'conversation'}[choice]
-    config_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    config_store.save_config(config_path, raw)
     print('已記住模式：' + ('本地模型' if choice == '1' else '其他 AI'))
 
 
 def create_task(config_path):
     configure(config_path)
-    config = worker.resolve_config(load_config(config_path), config_path.parent)
+    config = worker.resolve_config(config_store.load_runtime(config_path), config_path.parent)
     selection = choose('選擇工作角色',
                        {str(i): label for i, (_, label) in enumerate(ROLE_OPTIONS, 1)}, '1')
     role = ROLE_OPTIONS[int(selection) - 1][0]
@@ -64,7 +65,11 @@ def create_task(config_path):
         raise ValueError('任務不得空白。')
     if config['routine_work_provider'] == 'local':
         print('正在等待本地模型；失敗時不會自動改用其他 AI。')
-    result = worker.work(config, task, role)
+    if config.get('stream'):
+        print('串流預覽（尚未完成）：')
+    result = worker.work(config, task, role, on_delta=lambda text: print(text, end='', flush=True))
+    if config.get('stream'):
+        print()
     output_dir = ROOT / 'outputs'
     stem = datetime.now().strftime('%Y%m%d-%H%M%S-%f') + '-' + role
     text_path, json_path = output_dir / (stem + '.txt'), output_dir / (stem + '.json')
@@ -83,14 +88,15 @@ def main():
         print('需要 Python 3.10 或以上。')
         return 1
     print('PCB AI 助理 — 有本地模型／其他 AI 都可使用')
-    if sys.stdin.isatty() and not load_config(worker.CONFIG).get('setup_completed'):
-        from environment_setup import wizard
-        try:
+    try:
+        initial = load_config(worker.CONFIG)
+        if sys.stdin.isatty() and not initial.get('setup_completed'):
+            from environment_setup import wizard
             wizard(worker.CONFIG)
-        except (EOFError, KeyboardInterrupt):
-            return 0
-        except (OSError, ValueError, KeyError, TypeError) as exc:
-            print(f'設定未完成：{exc}；可由主選單重新執行。')
+    except (EOFError, KeyboardInterrupt):
+        return 0
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        print(f'設定未完成：{exc}；可由主選單重新執行。')
     while True:
         try:
             choice = choose('主選單', {'1': '建立任務', '2': '切換預設 AI 模式',
@@ -114,11 +120,11 @@ def main():
                 rules = Path(rule_text).expanduser() if rule_text else None
                 if rules and not rules.is_absolute():
                     rules = worker.CONFIG.parent / rules
-                config = worker.resolve_config(load_config(worker.CONFIG), worker.CONFIG.parent)
+                config = worker.resolve_config(config_store.load_runtime(worker.CONFIG), worker.CONFIG.parent)
                 report = validate_project(project, config, ROOT / 'outputs' / ('validation-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f')), rules)
                 print('檢查結果：' + report['status'] + '\n報告：' + report['report_path'])
             else:
-                config = worker.resolve_config(load_config(worker.CONFIG), worker.CONFIG.parent)
+                config = worker.resolve_config(config_store.load_runtime(worker.CONFIG), worker.CONFIG.parent)
                 if choice == '3':
                     worker.emit(config, None)
                 else:

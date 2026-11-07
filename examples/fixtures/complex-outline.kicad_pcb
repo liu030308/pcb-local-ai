@@ -1,0 +1,6 @@
+(kicad_pcb (version 20240108) (generator pcbnew)
+ (net 0 "")
+ (gr_line (start 0 0) (end 10 0) (layer "Edge.Cuts"))
+ (gr_arc (start 10 0) (mid 15 5) (end 10 10) (layer "Edge.Cuts"))
+ (gr_line (start 10 10) (end 0 10) (layer "Edge.Cuts"))
+ (gr_line (start 0 10) (end 0 0) (layer "Edge.Cuts")))

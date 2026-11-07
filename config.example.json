@@ -17,13 +17,10 @@
   "project_root": null,
   "open_completed_project": true,
   "open_completed_pcb": true,
-  "accepted_revision": null,
-  "active_project": null,
-  "active_pcb": null,
-  "project_display_name": null,
   "cloud_fallback": false,
   "routine_work_provider": "local",
-  "active_revision": null,
-  "active_project_status": null,
-  "accepted_projects": {}
+  "stream": false,
+  "connect_timeout_seconds": 10,
+  "read_timeout_seconds": 180,
+  "total_timeout_seconds": 900
 }

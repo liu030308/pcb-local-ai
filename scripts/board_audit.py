@@ -3,10 +3,16 @@ import json
 import math
 import re
 
+import schema_checks
+
 
 def parse_board(text):
     stack, roots = [], []
-    for match in re.finditer(r'"(?:\\.|[^"\\])*"|[()]|[^\s()]+', text):
+    position = 0
+    for match in re.finditer(r'"(?:\\.|[^"\\])*"|[()]|[^\s()"]+', text):
+        if text[position:match.start()].strip():
+            raise ValueError('PCB 含無法解析的字串。')
+        position = match.end()
         token = match.group()
         if token == '(':
             node = []
@@ -20,6 +26,8 @@ def parse_board(text):
             if not stack:
                 raise ValueError('PCB 根節點外出現內容。')
             stack[-1].append(json.loads(token) if token.startswith('"') else token)
+    if text[position:].strip():
+        raise ValueError('PCB 結尾含不完整字串。')
     if stack or len(roots) != 1 or not roots[0] or roots[0][0] != 'kicad_pcb':
         raise ValueError('不是完整的 KiCad PCB 內容。')
     return roots[0]
@@ -37,30 +45,9 @@ def field(node, name):
 
 
 def audit(board_path, rules):
-    allowed = {'min_track_width_mm', 'per_net_min_width_mm', 'allowed_track_layers',
-               'allowed_segment_headings_deg', 'max_vias', 'outline_size_mm'}
-    if not isinstance(rules, dict) or set(rules) - allowed:
-        raise ValueError('幾何規則含未知欄位或不是 JSON 物件。')
-    for key in ('min_track_width_mm',):
-        if rules.get(key) is not None and (isinstance(rules[key], bool) or not isinstance(rules[key], (int, float)) or not math.isfinite(rules[key]) or rules[key] <= 0):
-            raise ValueError(f'{key} 必須是正數。')
+    schema_checks.validate_rules(rules)
     per_net = rules.get('per_net_min_width_mm') or {}
-    if not isinstance(per_net, dict) or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v <= 0 for v in per_net.values()):
-        raise ValueError('每網路最小線寬必須是正數。')
-    for key in ('allowed_track_layers', 'allowed_segment_headings_deg', 'outline_size_mm'):
-        value = rules.get(key)
-        if value is not None and (not isinstance(value, list) or not value):
-            raise ValueError(f'{key} 必須是非空陣列或 null。')
-    if rules.get('allowed_track_layers') and any(not isinstance(v, str) for v in rules['allowed_track_layers']):
-        raise ValueError('銅層名稱必須是文字。')
-    for key in ('allowed_segment_headings_deg', 'outline_size_mm'):
-        if rules.get(key) and any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in rules[key]):
-            raise ValueError(f'{key} 必須使用有限數值。')
     size = rules.get('outline_size_mm')
-    if size and (len(size) != 2 or min(size) <= 0):
-        raise ValueError('outline_size_mm 必須是兩個正數。')
-    if rules.get('max_vias') is not None and (type(rules['max_vias']) is not int or rules['max_vias'] < 0):
-        raise ValueError('max_vias 必須是非負整數。')
     if not any(value is not None and value != {} for value in rules.values()):
         return {'status': 'not_run', 'reason': '尚未指定專案幾何門檻。'}
     board = parse_board(board_path.read_text(encoding='utf-8-sig'))

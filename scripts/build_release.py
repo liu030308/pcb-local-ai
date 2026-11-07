@@ -19,15 +19,14 @@ def build(root, output):
         relative = file.relative_to(root)
         if not file.is_file() or file.is_symlink() or any(part in {'__pycache__', '.git', 'outputs', 'dist', '.venv'} for part in relative.parts):
             continue
-        if relative.as_posix() in root_files or (relative.parts[0] in {'scripts', 'rules', 'examples', 'docs', '.github'}
+        if relative.as_posix() in root_files or (relative.parts[0] in {'scripts', 'rules', 'examples', 'docs', '.github', 'schemas'}
                                                 and file.suffix in {'.py', '.json', '.md', '.yml', '.kicad_pro', '.kicad_sch', '.kicad_pcb'}):
             data = file.read_bytes().replace(b'\r\n', b'\n')
             content[relative.as_posix()] = data.replace(b'\n', b'\r\n') if file.suffix == '.bat' else data
     for required in ('LICENSE', 'VERSION', 'config.example.json', 'start.bat', 'scripts/menu.py'):
         if required not in content:
             raise ValueError(f'發布缺少必要檔案：{required}')
-    template = json.loads(content['config.example.json'])
-    content['config.json'] = (json.dumps(template, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
+    json.loads(content['config.example.json'])  # Validate template; each installation initializes its own config.
     with ZipFile(archive, 'w', ZIP_DEFLATED) as zipped:
         for name, data in sorted(content.items()):
             info = ZipInfo('pcb-local-ai/' + name, date_time=(1980,1,1,0,0,0))

@@ -5,6 +5,7 @@ import sys
 from pathlib import Path
 
 import local_worker as worker
+import config_store
 
 
 def inspect_environment(config, probe_local=False):
@@ -27,7 +28,7 @@ def inspect_environment(config, probe_local=False):
     local = {'status': 'not_required' if config['routine_work_provider'] == 'conversation' else 'not_checked'}
     if config['routine_work_provider'] == 'local' and probe_local:
         try:
-            models = worker.request_json(dict(config, timeout_seconds=5), '/models')
+            models = worker.request_json(dict(config, timeout_seconds=5, connect_timeout_seconds=5, read_timeout_seconds=5, total_timeout_seconds=5), '/models')
             ids = [m.get('id') for m in models.get('data', []) if m.get('id')]
             local.update(status='reachable', loaded_models=ids)
             try:
@@ -45,7 +46,7 @@ def inspect_environment(config, probe_local=False):
 
 
 def wizard(config_path):
-    raw = json.loads(config_path.read_text(encoding='utf-8-sig'))
+    raw = config_store.load_config(config_path)
     print('\n首次環境設定：Enter 保留原值；路徑輸入 :auto 恢復自動偵測。')
     current = worker.normalize_provider(raw.get('routine_work_provider', 'local'))
     while True:
@@ -65,6 +66,17 @@ def wizard(config_path):
         answer = input(f'模型 ID [{raw.get("model") or "自動選唯一模型"}]（:auto 清空）：').strip()
         if answer:
             raw['model'] = None if answer == ':auto' else answer
+    if raw['routine_work_provider'] == 'local':
+        answer = input('啟用串流預覽？[y/N]（Enter 保留）：').strip().lower()
+        if answer in {'y', 'yes', 'n', 'no'}:
+            raw['stream'] = answer in {'y', 'yes'}
+        for key, label, default in [('connect_timeout_seconds','連線逾時秒數',10),
+                                     ('read_timeout_seconds','閒置讀取逾時秒數',raw.get('timeout_seconds',180)),
+                                     ('total_timeout_seconds','總時間上限秒數',900)]:
+            answer = input(f'{label} [{raw.get(key,default)}]：').strip()
+            if answer:
+                raw[key] = float(answer)
+        worker.local_http.timeouts(raw)
     resolved = worker.resolve_config(raw, config_path.parent)
     report = inspect_environment(resolved, probe_local=True)
     print(json.dumps(report, ensure_ascii=False, indent=2))
@@ -72,7 +84,7 @@ def wizard(config_path):
         print('已取消，設定未修改。')
         return report
     raw['setup_completed'] = True
-    config_path.write_text(json.dumps(raw, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    config_store.save_config(config_path, raw)
     if input('建立尚不存在的專案／元件庫根目錄？[y/N]：').strip().lower() in {'y', 'yes'}:
         for key in ('project_root', 'component_library_root'):
             Path(resolved[key]).mkdir(parents=True, exist_ok=True)

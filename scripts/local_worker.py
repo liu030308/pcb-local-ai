@@ -10,6 +10,9 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import config_store
+import local_http
+
 CONFIG = Path(__file__).resolve().parents[1] / 'config.json'
 RULES = Path(__file__).resolve().parents[1] / 'rules' / 'pcb_requirements.json'
 SYSTEM = ('你是 PCB 工作助理，目前只處理 KiCad，AD18 暫緩。以繁體中文完成指定工作。'
@@ -108,11 +111,6 @@ def resolve_config(config, config_dir):
     return config
 
 
-class NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        return None
-
-
 def validate_base_url(base):
     base = base.rstrip('/')
     url = urllib.parse.urlsplit(base)
@@ -123,12 +121,8 @@ def validate_base_url(base):
 
 
 def request_json(config, route, payload=None):
-    base = validate_base_url(config['base_url'])
-    data = None if payload is None else json.dumps(payload, ensure_ascii=False).encode('utf-8')
-    req = urllib.request.Request(base + route, data=data, headers={'Content-Type': 'application/json'})
-    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
-    with opener.open(req, timeout=config.get('timeout_seconds', 180)) as response:
-        return json.load(response)
+    validate_base_url(config['base_url'])
+    return local_http.request(config, route, payload)
 
 
 def choose_model(config, models):
@@ -160,7 +154,7 @@ def build_messages(config, task, role='general'):
             {'role': 'user', 'content': task}]
 
 
-def work(config, task, role='general'):
+def work(config, task, role='general', on_delta=None):
     messages = build_messages(config, task, role)
     provider = normalize_provider(config.get('routine_work_provider', 'local'))
     if provider == 'conversation':
@@ -169,9 +163,16 @@ def work(config, task, role='general'):
                 'prompt': messages[0]['content'] + '\n\n任務：\n' + task,
                 'resume': '將 prompt 貼到你選用的 AI 對話，或由目前協調者讀取後繼續；本程式未呼叫模型，任務尚未完成。'}
     model = choose_model(config, request_json(config, '/models'))
-    reply = request_json(config, '/chat/completions', {
-        'model': model, 'messages': messages,
-        'temperature': 0.2, 'max_tokens': config.get('max_tokens', 2048), 'stream': False})
+    streaming = config.get('stream', False)
+    if type(streaming) is not bool:
+        raise ValueError('stream 必須是 true 或 false。')
+    payload = {'model': model, 'messages': messages, 'temperature': 0.2,
+               'max_tokens': config.get('max_tokens', 2048), 'stream': streaming}
+    if streaming:
+        validate_base_url(config['base_url'])
+        reply = local_http.request(config, '/chat/completions', payload, on_delta)
+    else:
+        reply = request_json(config, '/chat/completions', payload)
     choices = reply.get('choices') or []
     if not choices:
         raise ValueError('本地服務未回傳 choices。')
@@ -222,11 +223,15 @@ def main():
                         help='local=本地模型；conversation=其他 AI 對話；gpt 為相容舊名稱')
     parser.add_argument('--format', choices=['json', 'text'], default='json',
                         help='work / decision 可輸出可直接複製的純文字')
+    stream_options = parser.add_mutually_exclusive_group()
+    stream_options.add_argument('--stream', dest='stream', action='store_true', default=None)
+    stream_options.add_argument('--no-stream', dest='stream', action='store_false')
     args = parser.parse_args()
     try:
         if args.format == 'text' and args.command not in {'work', 'decision'}:
             raise ValueError('--format text 僅適用 work 或 decision。')
-        protected = {args.config.resolve()}
+        protected = {args.config.resolve(), config_store.state_path(args.config).resolve(),
+                     config_store.backup_path(args.config).resolve(), args.config.with_name('config.example.json').resolve()}
         if args.task_file:
             protected.add(args.task_file.resolve())
         if args.output and args.output.resolve() in protected:
@@ -246,7 +251,7 @@ def main():
             from environment_setup import wizard
             wizard(args.config)
             return 0
-        raw_config = json.loads(args.config.read_text(encoding='utf-8-sig'))
+        raw_config = config_store.load_config(args.config)
         if args.command == 'configure':
             provider = args.provider
             if provider is None:
@@ -257,22 +262,31 @@ def main():
                 provider = {'1': 'local', '2': 'conversation'}[selected]
             provider = normalize_provider(provider)
             raw_config['routine_work_provider'] = provider
-            args.config.write_text(json.dumps(raw_config, ensure_ascii=False, indent=2) + '\n',
-                                   encoding='utf-8')
+            config_store.save_config(args.config, raw_config)
             emit({'status': 'configured', 'provider': provider, 'cloud_called': False}, args.output)
             return 0
-        config = resolve_config(raw_config, args.config.resolve().parent)
+        config = resolve_config(config_store.load_runtime(args.config), args.config.resolve().parent)
         if args.provider:
             config['routine_work_provider'] = normalize_provider(args.provider)
+        if args.stream is not None:
+            config['stream'] = args.stream
         if args.command == 'paths':
             emit(config, args.output)
             return 0
         if args.command == 'doctor':
             result = doctor(config)
         else:
-            result = work(config, task, args.role)
+            if config.get('stream'):
+                print('串流預覽（完整結束前不視為成功）：', file=sys.stderr)
+            result = work(config, task, args.role,
+                          on_delta=lambda text: print(text, end='', file=sys.stderr, flush=True))
+            if config.get('stream'):
+                print(file=sys.stderr)
         emit(result, args.output, args.format)
         return 3 if result.get('status') == 'needs_ai_work' else 0
+    except KeyboardInterrupt:
+        print('已取消；部分預覽不視為成功。', file=sys.stderr)
+        return 130
     except (OSError, ValueError, KeyError, TypeError, EOFError, urllib.error.URLError) as exc:
         print(json.dumps({'status': 'error', 'message': str(exc), 'cloud_called': False},
                          ensure_ascii=False), file=sys.stderr)

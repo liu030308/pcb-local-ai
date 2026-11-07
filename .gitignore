@@ -9,3 +9,9 @@ result.json
 *.log
 outputs/
 dist/
+
+/config.json
+/.pcb_state.json
+/.*_state.json
+/.*.pre-state-migration.json
+/.*.tmp
