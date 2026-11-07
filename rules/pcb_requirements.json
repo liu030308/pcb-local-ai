@@ -1,5 +1,5 @@
 {
-  "policy_version": 1,
+  "policy_version": 2,
   "mode": "required_design_checks",
   "evidence_policy": "A model statement is not proof of a tool run or engineering compliance.",
   "before_schematic": [
@@ -17,14 +17,19 @@
   "pcb_rules": [
     "Use the project-approved copper thickness, temperature rise, fabrication limits, current budgets and voltage-drop limits.",
     "Calculate per-net widths from current/thermal estimate, voltage drop and manufacturing minimum; do not use absolute device ratings as operating current.",
-    "Use 45-degree bends as requested by this user; audit straight-segment headings and non-pad series bends separately from junctions.",
+    "Use the project-approved bend requirements; when 45-degree routing is explicitly requested, audit straight-segment headings and non-pad series bends separately from junctions. Do not inherit another project's geometric or numeric constraints.",
     "Respect outline, component courtyards, copper-to-edge, hole/annular ring, net clearance and silk-to-mask constraints.",
     "Honor physical copper layer count and area; do not add vias, jumpers or another layer to a single-sided job without explicit acceptance.",
     "Verify connector signal/power separation, ground strategy and electrical returns against the actual netlist."
   ],
   "required_evidence": [
-    "ERC report", "DRC report", "schematic/PCB parity", "exact netlist comparison",
-    "angle and per-net width audit", "outline and courtyard audit", "physical layer/Gerber audit",
+    "ERC report",
+    "DRC report",
+    "schematic/PCB parity",
+    "exact netlist comparison",
+    "angle and per-net width audit",
+    "outline and courtyard audit",
+    "physical layer/Gerber audit",
     "independent theoretical calculations and remaining assumptions"
   ],
   "references": {

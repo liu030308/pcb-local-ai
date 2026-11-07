@@ -1,4 +1,4 @@
-"""Local inference and GPT decision handoff; no cloud calls or command execution."""
+"""KiCad text assistant with local inference or AI conversation handoff."""
 import argparse
 import json
 import os
@@ -23,14 +23,14 @@ ROLES = {
     'schematic': ('你是②原理圖助理。依需求、已驗證零件與既定決策整理連線及原理圖草稿。'
                   '缺件交①，布局交③。檢查報告需由工具產生，不虛構 ERC 通過。'),
     'layout': ('你是③PCB布局助理。依網路、板框、固定元件與規則提出分區、擺放和走線草稿。'
-               '包含原理圖轉入後混亂元件的重排。依使用者要求使用45度轉角；各網路線寬需有工作電流、'
+               '包含原理圖轉入後混亂元件的重排。轉角依專案要求，只有明確指定時才以45度驗收；各網路線寬需有工作電流、'
                '銅厚、溫升、壓降與製程依據，不用絕對最大額定當耗流。區分訊號輸入、輸出與電源，'
                '共地只適用地端。查核理論和實際網路，不能用DRC代替功能檢查。'
                '原理圖問題交②，缺件交①；不虛構 DRC 通過。'),
     'general': ('你是④通用助理，承接未分類工作：檔案整理、格式轉換、索引維護、報告彙整、'
                 '工作紀錄與錯誤資料整理。零件建立／腳位封裝問題轉交①，電路連線轉交②，'
                 'PCB布局走線轉交③；輸出 HANDOFF 加上目標角色與必要背景。'
-                '需要方案取捨時交 GPT，不自行改變既定設計要求。沒有執行工具就只提供草稿。'),
+                '需要方案取捨時交協調對話，不自行改變既定設計要求。沒有執行工具就只提供草稿。'),
     'theory': ('你是⑤獨立電路理論檢查助理。先依使用者目標列出必須取得的原廠資料、'
                '電路理論來源與設計條件；搜尋與下載由工具代辦，不假裝自己已上網。'
                '根據原始規格、Datasheet、實際元件值及匯出網路清單獨立驗證，不以設計助理的結論作證據。'
@@ -42,6 +42,14 @@ ROLES = {
                'ERC/DRC不能證明功能正確；只有工具實際驗證的結果才能當執行證據。'
                '你的PASS只是模型審閱意見，不是量測、模擬或工程認證，不自動授權製作。'),
 }
+
+
+def normalize_provider(provider):
+    if provider == 'gpt':  # Compatibility with previously distributed settings and commands.
+        return 'conversation'
+    if provider not in {'local', 'conversation'}:
+        raise ValueError('routine_work_provider 僅允許 local 或 conversation（舊名稱 gpt 仍可使用）。')
+    return provider
 
 
 def resolve_config(config, config_dir):
@@ -96,6 +104,7 @@ def resolve_config(config, config_dir):
             else config_dir / os.path.expandvars(project['path'])))
         for name, project in config.get('accepted_projects', {}).items()
     }
+    config['routine_work_provider'] = normalize_provider(config.get('routine_work_provider', 'local'))
     return config
 
 
@@ -148,14 +157,12 @@ def build_messages(config, task, role='general'):
 
 def work(config, task, role='general'):
     messages = build_messages(config, task, role)
-    provider = config.get('routine_work_provider', 'local')
-    if provider == 'gpt':
-        return {'status': 'needs_gpt_work', 'provider': 'gpt', 'role': role,
+    provider = normalize_provider(config.get('routine_work_provider', 'local'))
+    if provider == 'conversation':
+        return {'status': 'needs_ai_work', 'provider': 'conversation', 'role': role,
                 'messages': messages, 'executed': False, 'cloud_called': False,
                 'prompt': messages[0]['content'] + '\n\n任務：\n' + task,
-                'resume': '將 prompt 交給目前 GPT 對話處理；本程式未呼叫模型，任務尚未完成。'}
-    if provider != 'local':
-        raise ValueError('routine_work_provider 僅允許 local 或 gpt。')
+                'resume': '將 prompt 貼到你選用的 AI 對話，或由目前協調者讀取後繼續；本程式未呼叫模型，任務尚未完成。'}
     model = choose_model(config, request_json(config, '/models'))
     reply = request_json(config, '/chat/completions', {
         'model': model, 'messages': messages,
@@ -173,12 +180,30 @@ def work(config, task, role='general'):
             'content': content, 'usage': reply.get('usage'), 'executed': False}
 
 
-def emit(value, output):
-    serialized = json.dumps(value, ensure_ascii=False, indent=2)
+def doctor(config):
+    local = normalize_provider(config.get('routine_work_provider', 'local')) == 'local'
+    model = choose_model(config, request_json(config, '/models')) if local else None
+    cli, ad18 = config.get('kicad_cli'), config.get('ad18_exe')
+    return {'status': 'local_service_reachable' if local else 'ai_handoff_ready',
+            'provider': 'local' if local else 'conversation',
+            'local_service_checked': local, 'cloud_called': False, 'model': model,
+            'kicad_cli': cli, 'kicad_cli_exists': bool(cli and Path(cli).is_file()),
+            'ad18_exe': ad18, 'ad18_exe_exists': bool(ad18 and Path(ad18).is_file()),
+            'eda_adapters_implemented': False, 'inference_tested': False}
+
+
+def emit(value, output, output_format='json', quiet=False):
+    if output_format == 'text':
+        serialized = value.get('prompt') or value.get('content')
+        if not isinstance(serialized, str):
+            raise ValueError('此結果沒有可輸出的提示詞或文字；請使用 json 格式。')
+    else:
+        serialized = json.dumps(value, ensure_ascii=False, indent=2)
     if output:
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_text(serialized + '\n', encoding='utf-8')
-    print(serialized)
+    if not quiet:
+        print(serialized)
 
 
 def main():
@@ -188,10 +213,14 @@ def main():
     parser.add_argument('--task-file', type=Path)
     parser.add_argument('--output', type=Path)
     parser.add_argument('--role', choices=sorted(ROLES), default='general')
-    parser.add_argument('--provider', choices=['local', 'gpt'],
-                        help='local=有本地模型；gpt=無本地模型，交目前對話處理')
+    parser.add_argument('--provider', choices=['local', 'conversation', 'gpt'],
+                        help='local=本地模型；conversation=其他 AI 對話；gpt 為相容舊名稱')
+    parser.add_argument('--format', choices=['json', 'text'], default='json',
+                        help='work / decision 可輸出可直接複製的純文字')
     args = parser.parse_args()
     try:
+        if args.format == 'text' and args.command not in {'work', 'decision'}:
+            raise ValueError('--format text 僅適用 work 或 decision。')
         protected = {args.config.resolve()}
         if args.task_file:
             protected.add(args.task_file.resolve())
@@ -204,18 +233,20 @@ def main():
             if not task:
                 raise ValueError('任務不得空白。')
             if args.command == 'decision':
-                emit({'status': 'needs_gpt_decision', 'question': task, 'role': args.role, 'cloud_called': False,
-                      'resume': '將 GPT 決策加入下一個本地任務。'}, args.output)
+                emit({'status': 'needs_ai_decision', 'question': task, 'role': args.role, 'cloud_called': False,
+                      'prompt': '請依原始需求與已有證據協助方案取捨；資料不足時列出缺項，不宣稱已執行工具。\n\n' + task,
+                      'resume': '將 AI 決策加入下一個任務。'}, args.output, args.format)
                 return 3
         raw_config = json.loads(args.config.read_text(encoding='utf-8-sig'))
         if args.command == 'configure':
             provider = args.provider
             if provider is None:
-                print('請選擇：1. 有本地模型  2. 無本地模型（交目前 GPT 對話處理）')
+                print('請選擇：1. 有本地模型  2. 其他 AI（無本地模型）')
                 selected = input('輸入 1 或 2：').strip()
                 if selected not in {'1', '2'}:
                     raise ValueError('請輸入 1 或 2；設定未變更。')
-                provider = {'1': 'local', '2': 'gpt'}[selected]
+                provider = {'1': 'local', '2': 'conversation'}[selected]
+            provider = normalize_provider(provider)
             raw_config['routine_work_provider'] = provider
             args.config.write_text(json.dumps(raw_config, ensure_ascii=False, indent=2) + '\n',
                                    encoding='utf-8')
@@ -223,26 +254,16 @@ def main():
             return 0
         config = resolve_config(raw_config, args.config.resolve().parent)
         if args.provider:
-            config['routine_work_provider'] = args.provider
-        if config.get('routine_work_provider', 'local') not in {'local', 'gpt'}:
-            raise ValueError('routine_work_provider 僅允許 local 或 gpt。')
+            config['routine_work_provider'] = normalize_provider(args.provider)
         if args.command == 'paths':
             emit(config, args.output)
             return 0
         if args.command == 'doctor':
-            local = config.get('routine_work_provider', 'local') == 'local'
-            model = choose_model(config, request_json(config, '/models')) if local else None
-            cli, ad18 = config.get('kicad_cli'), config.get('ad18_exe')
-            result = {'status': 'local_service_reachable' if local else 'gpt_handoff_ready',
-                      'provider': config.get('routine_work_provider', 'local'),
-                      'local_service_checked': local, 'cloud_called': False, 'model': model,
-                      'kicad_cli': cli, 'kicad_cli_exists': bool(cli and Path(cli).is_file()),
-                      'ad18_exe': ad18, 'ad18_exe_exists': bool(ad18 and Path(ad18).is_file()),
-                      'eda_adapters_implemented': False, 'inference_tested': False}
+            result = doctor(config)
         else:
             result = work(config, task, args.role)
-        emit(result, args.output)
-        return 3 if result.get('status') == 'needs_gpt_work' else 0
+        emit(result, args.output, args.format)
+        return 3 if result.get('status') == 'needs_ai_work' else 0
     except (OSError, ValueError, KeyError, TypeError, EOFError, urllib.error.URLError) as exc:
         print(json.dumps({'status': 'error', 'message': str(exc), 'cloud_called': False},
                          ensure_ascii=False), file=sys.stderr)

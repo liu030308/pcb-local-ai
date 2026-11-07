@@ -9,11 +9,57 @@ import local_worker as worker
 
 
 class WorkerTests(unittest.TestCase):
+    def test_conversation_and_legacy_gpt_have_same_handoff(self):
+        with patch.object(worker, 'request_json') as network:
+            modern = worker.work({'routine_work_provider': 'conversation'}, 'task', 'layout')
+            legacy = worker.work({'routine_work_provider': 'gpt'}, 'task', 'layout')
+            network.assert_not_called()
+        self.assertEqual(modern, legacy)
+        self.assertEqual(modern['provider'], 'conversation')
+
+    def test_text_export_is_complete_unicode_prompt(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / 'prompt.txt'
+            result = worker.work({'routine_work_provider': 'conversation'}, '請分析電路\n資料尚缺', 'theory')
+            with contextlib.redirect_stdout(io.StringIO()):
+                worker.emit(result, output, 'text')
+            self.assertEqual(output.read_text(encoding='utf-8'), result['prompt'] + '\n')
+            self.assertIn('required_evidence', output.read_text(encoding='utf-8'))
+
+    def test_cli_conversation_text_handoff(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            config, task, output = root / 'config.json', root / 'task.txt', root / 'prompt.txt'
+            config.write_text('{}')
+            task.write_text('需求：輸入阻抗', encoding='utf-8-sig')
+            args = ['worker', 'work', '--config', str(config), '--provider', 'conversation',
+                    '--task-file', str(task), '--format', 'text', '--output', str(output)]
+            with patch('sys.argv', args), patch.object(worker, 'request_json') as network, \
+                 contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(worker.main(), 3)
+                network.assert_not_called()
+            self.assertIn('需求：輸入阻抗', output.read_text(encoding='utf-8'))
+
+    def test_export_refuses_overwriting_task(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            task = Path(temporary) / 'task.txt'
+            task.write_text('original')
+            args = ['worker', 'work', '--task-file', str(task), '--output', str(task), '--format', 'text']
+            with patch('sys.argv', args), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(worker.main(), 1)
+            self.assertEqual(task.read_text(), 'original')
+
+    def test_invalid_provider_never_calls_network(self):
+        with patch.object(worker, 'request_json') as network:
+            with self.assertRaises(ValueError):
+                worker.work({'routine_work_provider': 'unexpected'}, 'task')
+            network.assert_not_called()
+
     def test_gpt_work_preserves_rules_without_network(self):
         with patch.object(worker, 'request_json') as network:
             result = worker.work({'routine_work_provider': 'gpt'}, '檢查我的電路', 'theory')
             network.assert_not_called()
-        self.assertEqual(result['status'], 'needs_gpt_work')
+        self.assertEqual(result['status'], 'needs_ai_work')
         self.assertIn('檢查我的電路', result['prompt'])
         self.assertIn(worker.ROLES['theory'], result['prompt'])
         self.assertIn('required_evidence', result['prompt'])
@@ -31,7 +77,7 @@ class WorkerTests(unittest.TestCase):
                 self.assertEqual(worker.main(), 0)
                 network.assert_not_called()
             self.assertEqual(json.loads(config.read_text()),
-                             {'project_root': None, 'routine_work_provider': 'gpt'})
+                             {'project_root': None, 'routine_work_provider': 'conversation'})
 
     def test_gpt_doctor_and_work_exit_codes(self):
         with tempfile.TemporaryDirectory() as temporary:
