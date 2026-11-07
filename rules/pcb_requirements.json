@@ -1,0 +1,36 @@
+{
+  "policy_version": 1,
+  "mode": "required_design_checks",
+  "evidence_policy": "A model statement is not proof of a tool run or engineering compliance.",
+  "before_schematic": [
+    "Extract the user's function, supply, signal amplitude/frequency, load, size, layer and fabrication constraints.",
+    "Proactively obtain manufacturer datasheets and authoritative theory via tools; preserve URLs, revision, pinout and package identity.",
+    "List missing information and distinguish approved assumptions from measured or guaranteed values."
+  ],
+  "theory_review": [
+    "Review raw requirements, datasheet evidence, exact values and exported netlist independently of the designer's conclusions.",
+    "Write signed KCL/KVL and verify residuals with numerical tools; verify polarity, bias region, ratings, power and current paths.",
+    "Check input/output impedance, coupling, returns, load, gain, bandwidth and clipping within the requested operating envelope.",
+    "Analyze capacitors as open circuits in steady-state DC and distinguish floating nodes from nodes with resistive returns.",
+    "Reject contradicted calculations; preserve the initial review, numerical rejection and corrected review."
+  ],
+  "pcb_rules": [
+    "Use the project-approved copper thickness, temperature rise, fabrication limits, current budgets and voltage-drop limits.",
+    "Calculate per-net widths from current/thermal estimate, voltage drop and manufacturing minimum; do not use absolute device ratings as operating current.",
+    "Use 45-degree bends as requested by this user; audit straight-segment headings and non-pad series bends separately from junctions.",
+    "Respect outline, component courtyards, copper-to-edge, hole/annular ring, net clearance and silk-to-mask constraints.",
+    "Honor physical copper layer count and area; do not add vias, jumpers or another layer to a single-sided job without explicit acceptance.",
+    "Verify connector signal/power separation, ground strategy and electrical returns against the actual netlist."
+  ],
+  "required_evidence": [
+    "ERC report", "DRC report", "schematic/PCB parity", "exact netlist comparison",
+    "angle and per-net width audit", "outline and courtyard audit", "physical layer/Gerber audit",
+    "independent theoretical calculations and remaining assumptions"
+  ],
+  "references": {
+    "general_design_scope": "https://www.ipc.org/TOC/IPC-2221B.pdf",
+    "current_carrying_scope": "https://www.ipc.org/TOC/IPC-2152.pdf",
+    "thermal_and_resistance_estimate": "https://www.ti.com/lit/ug/tiducs7/tiducs7.pdf"
+  },
+  "release_rule": "Do not report overall success while required functional or geometry checks fail. Do not claim full IPC certification or manufacturer DFM approval without that evidence. These prompts are gates for the caller; they are not an implemented automatic tool scheduler."
+}
