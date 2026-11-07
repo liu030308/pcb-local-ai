@@ -21,7 +21,8 @@ def build(root, output):
             continue
         if relative.as_posix() in root_files or (relative.parts[0] in {'scripts', 'rules', 'examples', 'docs', '.github'}
                                                 and file.suffix in {'.py', '.json', '.md', '.yml', '.kicad_pro', '.kicad_sch', '.kicad_pcb'}):
-            content[relative.as_posix()] = file.read_bytes()
+            data = file.read_bytes().replace(b'\r\n', b'\n')
+            content[relative.as_posix()] = data.replace(b'\n', b'\r\n') if file.suffix == '.bat' else data
     for required in ('LICENSE', 'VERSION', 'config.example.json', 'start.bat', 'scripts/menu.py'):
         if required not in content:
             raise ValueError(f'發布缺少必要檔案：{required}')
@@ -30,6 +31,7 @@ def build(root, output):
     with ZipFile(archive, 'w', ZIP_DEFLATED) as zipped:
         for name, data in sorted(content.items()):
             info = ZipInfo('pcb-local-ai/' + name, date_time=(1980,1,1,0,0,0))
+            info.create_system = 3
             info.compress_type = ZIP_DEFLATED
             info.external_attr = 0o100644 << 16
             zipped.writestr(info, data)

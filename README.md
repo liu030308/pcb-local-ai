@@ -80,7 +80,7 @@ python scripts/local_worker.py work --provider local --role parts --task-file ex
 python -B -m unittest discover -s scripts -p "test_*.py" -v
 ```
 
-目前有 48 項本機測試，涵蓋路徑解析、模式選擇、離線交接及本地請求邊界。測試通過不代表電路已通過工程驗證。
+目前有 49 項本機測試，涵蓋路徑解析、模式選擇、離線交接及本地請求邊界。測試通過不代表電路已通過工程驗證。
 
 ## 舊版相容
 
@@ -123,7 +123,7 @@ python scripts/validate_project.py --project "你的專案/電路.kicad_pro" --r
 
 ## 版本、自動測試與發布
 
-GitHub Actions 會執行 Windows／Linux、Python 3.10／3.13 測試；另以 Ubuntu 套件中的真正 KiCad 執行空白與故意錯誤的暫存專案。這只驗證檢查流程，不是產品電路驗證。
+GitHub Actions 會執行 Windows／Linux、Python 3.10／3.13 測試；另以 KiCad 官方穩定版 PPA 的真正 KiCad 執行空白與故意錯誤的暫存專案。這只驗證檢查流程，不是產品電路驗證。
 
 維護者更新 VERSION、CHANGELOG.md 與 docs/RELEASE_NOTES.md 後，推送相符的 `v版本號` 標籤；測試全部成功後才建立 Release，附乾淨設定的 ZIP 與 SHA256SUMS。一般使用者無需設定 GitHub token。
 

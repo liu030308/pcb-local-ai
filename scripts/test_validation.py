@@ -56,6 +56,19 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(len(result['checks']['erc']['report_sha256']), 64)
         self.assertTrue(Path(result['report_path']).is_file())
 
+    def test_unsupported_cli_is_marked_not_run(self):
+        calls=[]
+        def old_cli(command, timeout=180):
+            calls.append(command)
+            result=self.fake_command(command,timeout)
+            if '--help' in command:
+                result.update(returncode=1,stdout='Usage: sch {export}')
+            return result
+        result=self.run_validation(old_cli)
+        self.assertEqual(result['status'],'needs_review')
+        self.assertEqual(result['checks']['erc']['status'],'not_run')
+        self.assertFalse(any('--output' in command for command in calls))
+
     def test_missing_report_never_passes(self):
         def missing(command, timeout=180):
             result = self.fake_command(command, timeout)
